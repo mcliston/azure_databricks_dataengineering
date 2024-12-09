@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "nba-analysis-tools"
+version = "0.5.0"
+description = ""
+authors = ["Michael Liston <mcliston@ischool.berkeley.edu>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+duckdb = "*"
+pandas = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
