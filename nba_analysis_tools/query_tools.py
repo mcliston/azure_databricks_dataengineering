@@ -2,6 +2,10 @@ import duckdb
 import pandas as pd
 from typing import Any
 
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col, sum, avg, count, min, max
+from pyspark.sql.types import IntegerType, StringType, FloatType
+
 class PerTeamExtract:
     """
     Class to extract data from parquet files located in Azure blob storage
@@ -181,3 +185,76 @@ class PerTeamExtract:
         team_picks_df = self._get_team_draft_picks_per_season()
 
         return team_df, team_picks_df
+
+class TeamStats:
+
+    def __init__(self, team_id:int, team_df:DataFrame, team_draft_df:DataFrame):
+        self.team_id = team_id
+        self.team_df = team_df
+        self.team_draft_df = team_draft_df
+        self.home_team_df = self._get_home_df()
+        self.away_team_df = self._get_away_df()
+        self.avg_home_fg_season = self._get_avg_home_fg_season()
+        self.avg_away_fg_season = self._get_avg_away_fg_season()
+        self.avg_fb_pts_home = self._get_pct_fb_pts_home()
+        self.avg_fb_pts_away = self._get_pct_fb_pts_away()
+        self.avg_pts_paint_home = self._get_pct_pts_paint_home()
+        self.avg_pts_paint_away = self._get_pct_pts_paint_away()
+    
+    def _get_home_df(self):
+        return self.team_df.filter(self.team_df.team_id_home == self.team_id)
+    
+    def _get_away_df(self):
+        
+        return self.team_df.filter(self.team_df.team_id_away == self.team_id)
+    
+    def _get_avg_home_fg_season(self):
+
+        tmp = self.home_team_df.groupBy("season").agg(avg("fg_pct_home").alias("avg_fg_pct_home_season"),
+                                                  avg("fg3_pct_home").alias("avg_fg3_pct_home_season"))
+        tmp = tmp.withColumn("season", col("season").cast(IntegerType()))
+
+        return tmp.sort("season")
+        
+    def _get_avg_away_fg_season(self):
+        tmp = self.away_team_df.groupBy("season").agg(avg("fg_pct_away").alias("avg_fg_pct_away_season"),
+                                                       avg("fg3_pct_away").alias("avg_fg3_pct_away_season"))
+        tmp = tmp.withColumn("season", col("season").cast(IntegerType()))
+
+        return tmp.sort("season")
+    
+    def _get_pct_fb_pts_home(self):
+        tmp = self.home_team_df.withColumn("ratio", col('pts_fb_home')/col("pts_home")) \
+                .groupBy("season").agg(avg("ratio").alias("avg_fb_pts_home_season"))
+        tmp = tmp.withColumn("season", col("season").cast(IntegerType()))
+
+        return tmp.sort("season")
+    
+    def _get_pct_fb_pts_away(self):
+        tmp = self.away_team_df.withColumn("ratio", col('pts_fb_away')/col("pts_away")) \
+                .groupBy("season").agg(avg("ratio").alias("avg_fb_pts_away_season"))
+        tmp = tmp.withColumn("season", col("season").cast(IntegerType()))
+        return tmp.sort("season")
+    
+    def _get_pct_pts_paint_home(self):
+        tmp = self.home_team_df.withColumn("ratio", col('pts_paint_home')/col("pts_home")) \
+                .groupBy("season").agg(avg("ratio").alias("avg_pts_paint_home_season"))
+        tmp = tmp.withColumn("season", col("season").cast(IntegerType()))
+
+        return tmp.sort("season")
+    
+    def _get_pct_pts_paint_away(self):
+        tmp = self.home_team_df.withColumn("ratio", col('pts_paint_away')/col("pts_home")) \
+                .groupBy("season").agg(avg("ratio").alias("avg_pts_paint_away_season"))
+        tmp = tmp.withColumn("season", col("season").cast(IntegerType()))
+
+        return tmp.sort("season")
+    
+    def combine_stats(self):
+      
+        joined_df = self.avg_home_fg_season.join(self.avg_away_fg_season, "season", "outer") \
+                .join(self.avg_fb_pts_home, "season", "outer") \
+                .join(self.avg_fb_pts_away, "season", "outer") \
+                .join(self.avg_pts_paint_home, "season", "outer") \
+                .join(self.avg_pts_paint_away, "season", "outer")
+        return joined_df
